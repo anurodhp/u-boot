@@ -265,17 +265,27 @@ int rockchip_copy_image(int fd, struct image_tool_params *mparams);
  *  b) we need a API call to get the respective section symbols */
 #if defined(__MACH__)
 #include <mach-o/getsect.h>
+#include <mach-o/ldsyms.h>
 
+/*
+ * The table holds pointers, so it lives in __DATA: current Apple ld
+ * rejects text relocations outright ("Found illegal text-relocations",
+ * and -ld_classic is ignored). It is read back with getsectiondata()
+ * against this image's own header, which returns the ASLR-slid address;
+ * getsectdata() returns the unslid link-time address, which is wrong once
+ * the tool is PIE (and -no_pie is ignored on current macOS too).
+ */
 #define INIT_SECTION(name)  do {					\
 		unsigned long name ## _len;				\
-		char *__cat(pstart_, name) = getsectdata("__TEXT",	\
+		char *__cat(pstart_, name) = (char *)getsectiondata(	\
+			&_mh_execute_header, "__DATA",			\
 			#name, &__cat(name, _len));			\
 		char *__cat(pstop_, name) = __cat(pstart_, name) +	\
 			__cat(name, _len);				\
 		__cat(__start_, name) = (void *)__cat(pstart_, name);	\
 		__cat(__stop_, name) = (void *)__cat(pstop_, name);	\
 	} while (0)
-#define SECTION(name)   __attribute__((section("__TEXT, " #name)))
+#define SECTION(name)   __attribute__((section("__DATA, " #name)))
 
 struct image_type_params **__start_image_type, **__stop_image_type;
 #else
