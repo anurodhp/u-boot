@@ -9,8 +9,10 @@
 #include <video.h>
 #include <xnu.h>
 
+DECLARE_GLOBAL_DATA_PTR;
+
 #define XNU_LOAD_OFFSET  0x4000
-#define XNU_LOAD_ADDR CONFIG_SYS_LOAD_ADDR + XNU_LOAD_OFFSET
+#define XNU_LOAD_ADDR (CONFIG_SYS_LOAD_ADDR + XNU_LOAD_OFFSET)
 
 /*
  * Returns the length of an Apple Flattened Device Tree pointed to by afdt
@@ -142,7 +144,18 @@ int do_bootxnu(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	boot_args->version = 2;
 	boot_args->virt_base = load_info.base;
 	boot_args->phys_base = XNU_LOAD_ADDR;
-	boot_args->mem_size = CONFIG_SYS_SDRAM_SIZE;
+	/*
+	 * mem_size is the RAM above phys_base (XNU manages
+	 * [phys_base, phys_base + mem_size)). The ARM's share of RAM ends at
+	 * CONFIG_SYS_SDRAM_BASE + gd->ram_size: board/raspberrypi/rpi/rpi.c's
+	 * dram_init() reads it from the firmware (GET_ARM_MEMORY), which
+	 * honours gpu_mem in config.txt, so this never reaches VideoCore
+	 * memory or the framebuffer the firmware allocates there.
+	 * CONFIG_SYS_SDRAM_SIZE is only u-boot's own 128 MB working limit
+	 * (include/configs/rpi.h), not the board's RAM. Same meaning as the
+	 * QEMU loader's memSize (qemu fork f57405b, hw/arm/boot.c).
+	 */
+	boot_args->mem_size = CONFIG_SYS_SDRAM_BASE + gd->ram_size - XNU_LOAD_ADDR;
 	boot_args->phys_end = (uintptr_t)(boot_args + 1);
 	command_line = env_get("bootargs");
 	if (command_line)
